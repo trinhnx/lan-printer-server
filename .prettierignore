@@ -1,0 +1,26 @@
+# Ignore build outputs
+dist/
+build/
+out/
+.next/
+
+# Ignore node_modules
+node_modules/
+
+# Ignore package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Ignore uploaded files
+uploads/
+
+# Ignore logs
+*.log
+
+# Ignore cache
+.cache/
+.turbo/
+
+# Ignore generated files
+*.generated.*

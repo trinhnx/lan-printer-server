@@ -1,0 +1,43 @@
+{
+  "root": true,
+  "env": {
+    "node": true,
+    "es2022": true,
+    "browser": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "@typescript-eslint/recommended",
+    "prettier"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-explicit-any": "warn",
+    "prefer-const": "error",
+    "no-var": "error"
+  },
+  "overrides": [
+    {
+      "files": ["apps/frontend/**/*"],
+      "extends": [
+        "next/core-web-vitals",
+        "prettier"
+      ],
+      "rules": {
+        "react-hooks/exhaustive-deps": "warn"
+      }
+    },
+    {
+      "files": ["apps/backend/**/*"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off"
+      }
+    }
+  ]
+}

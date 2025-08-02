@@ -4,6 +4,9 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
+  // Trust proxy to get real IP addresses
+  app.getHttpAdapter().getInstance().set('trust proxy', true);
+  
   // Enable CORS for frontend communication
   app.enableCors({
     origin: true, // Allow all origins for LAN access

@@ -8,7 +8,9 @@ import {
   UploadedFile,
   BadRequestException,
   NotFoundException,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -17,6 +19,23 @@ import { PrintService, PrintJob, PrinterInfo } from './print.service';
 @Controller('print')
 export class PrintController {
   constructor(private readonly printService: PrintService) {}
+
+  private getSourceInfo(req: Request) {
+    // Get real IP address considering proxies
+    const ipAddress = req.ip || 
+                     req.connection.remoteAddress || 
+                     req.socket.remoteAddress || 
+                     (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+                     'unknown';
+    
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    
+    // Try to get hostname from reverse DNS lookup (optional enhancement)
+    return {
+      ipAddress: ipAddress.replace('::ffff:', ''), // Remove IPv6 prefix if present
+      userAgent,
+    };
+  }
 
   @Get('printers')
   async getPrinters(): Promise<PrinterInfo[]> {
@@ -67,6 +86,7 @@ export class PrintController {
   )
   async uploadAndPrint(
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
     @Body('printerName') printerName?: string,
   ): Promise<{ jobId: string; message: string }> {
     if (!file) {
@@ -74,7 +94,8 @@ export class PrintController {
     }
 
     try {
-      const jobId = await this.printService.printFile(file.path, printerName);
+      const sourceInfo = this.getSourceInfo(req);
+      const jobId = await this.printService.printFile(file.path, printerName, undefined, sourceInfo);
       return {
         jobId,
         message: 'Print job submitted successfully',
@@ -85,15 +106,18 @@ export class PrintController {
   }
 
   @Post('file')
-  async printUploadedFile(@Body() printRequest: { 
-    filename: string; 
-    printerName?: string; 
-    options?: {
-      paperSize?: string;
-      duplex?: 'simplex' | 'duplex' | 'tumble';
-      copies?: number;
-    };
-  }): Promise<{ jobId: string; message: string }> {
+  async printUploadedFile(
+    @Body() printRequest: { 
+      filename: string; 
+      printerName?: string; 
+      options?: {
+        paperSize?: string;
+        duplex?: 'simplex' | 'duplex' | 'tumble';
+        copies?: number;
+      };
+    },
+    @Req() req: Request,
+  ): Promise<{ jobId: string; message: string }> {
     try {
       const { filename, printerName, options } = printRequest;
       
@@ -101,8 +125,10 @@ export class PrintController {
         throw new BadRequestException('Filename is required');
       }
 
-      const filePath = join(process.cwd(), 'uploads', filename);
-      const jobId = await this.printService.printFile(filePath, printerName, options);
+      // Fix the path to point to the uploads directory at the project root
+      const filePath = join(process.cwd(), '..', '..', 'uploads', filename);
+      const sourceInfo = this.getSourceInfo(req);
+      const jobId = await this.printService.printFile(filePath, printerName, options, sourceInfo);
 
       return {
         jobId,

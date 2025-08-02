@@ -10,9 +10,10 @@ import {
   BadRequestException,
   Res,
   StreamableFile,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { createReadStream } from 'fs';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -21,6 +22,22 @@ import { FilesService, FileInfo } from './files.service';
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
+
+  private getSourceInfo(req: Request) {
+    // Get real IP address considering proxies
+    const ipAddress = req.ip || 
+                     req.connection.remoteAddress || 
+                     req.socket.remoteAddress || 
+                     (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+                     'unknown';
+    
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    
+    return {
+      ipAddress: ipAddress.replace('::ffff:', ''), // Remove IPv6 prefix if present
+      userAgent,
+    };
+  }
 
   @Get()
   async getUploadedFiles(): Promise<FileInfo[]> {
@@ -57,10 +74,22 @@ export class FilesController {
       fileSize: 50 * 1024 * 1024, // 50MB
     },
   }))
-  async uploadFile(@UploadedFile() file: Express.Multer.File): Promise<{ filename: string; originalName: string; message: string }> {
+  async uploadFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+  ): Promise<{ filename: string; originalName: string; message: string }> {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
+
+    // Store file metadata with source information
+    const sourceInfo = this.getSourceInfo(req);
+    await this.filesService.storeFileMetadata(
+      file.filename,
+      file.originalname,
+      file.mimetype,
+      sourceInfo
+    );
 
     return {
       filename: file.filename,

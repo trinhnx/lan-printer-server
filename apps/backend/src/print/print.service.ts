@@ -12,6 +12,11 @@ export interface PrintJob {
   status: 'pending' | 'printing' | 'completed' | 'failed';
   timestamp: Date;
   error?: string;
+  sourceInfo?: {
+    ipAddress: string;
+    hostname?: string;
+    userAgent?: string;
+  };
 }
 
 export interface PrinterInfo {
@@ -65,6 +70,11 @@ export class PrintService {
       paperSize?: string;
       duplex?: 'simplex' | 'duplex' | 'tumble';
       copies?: number;
+    },
+    sourceInfo?: {
+      ipAddress: string;
+      hostname?: string;
+      userAgent?: string;
     }
   ): Promise<string> {
     const jobId = this.generateJobId();
@@ -76,6 +86,7 @@ export class PrintService {
       filename,
       status: 'pending',
       timestamp: new Date(),
+      sourceInfo,
     };
     
     this.printJobs.set(jobId, printJob);
@@ -89,6 +100,11 @@ export class PrintService {
       // Update status to printing
       printJob.status = 'printing';
       this.printJobs.set(jobId, printJob);
+
+      console.log(`Starting print job for ${filename} from IP: ${sourceInfo?.ipAddress || 'unknown'}`);
+      console.log(`File path: ${filePath}`);
+      console.log(`Printer: ${printerName || 'default'}`);
+      console.log(`Options:`, options);
 
       let printCommand: string;
       const fileExtension = path.extname(filePath).toLowerCase();
@@ -107,21 +123,32 @@ export class PrintService {
         printArgs += ` -Copies ${copies}`;
       }
       
+      // Use a simpler, more reliable print approach
       if (printerName) {
-        // Print to specific printer with options
-        if (fileExtension === '.pdf') {
-          // For PDF files, use PowerShell with print settings
-          printCommand = `powershell -Command "& { $printer = Get-Printer -Name '${printerName}'; for ($i = 1; $i -le ${copies}; $i++) { Start-Process -FilePath '${filePath}' -ArgumentList '/d:${printerName}' -WindowStyle Hidden -Wait } }"`;
-        } else {
-          // For other files, use PowerShell printing with basic settings
-          printCommand = `powershell -Command "& { for ($i = 1; $i -le ${copies}; $i++) { Start-Process -FilePath '${filePath}' -Verb Print -WindowStyle Hidden } }"`;
-        }
+        // Print to specific printer using rundll32
+        printCommand = `rundll32.exe shimgvw.dll,ImageView_PrintTo /pt "${filePath}" "${printerName}"`;
       } else {
-        // Print to default printer with copies
-        printCommand = `powershell -Command "& { for ($i = 1; $i -le ${copies}; $i++) { Start-Process -FilePath '${filePath}' -Verb Print -WindowStyle Hidden } }"`;
+        // Print to default printer using Windows default print association
+        printCommand = `powershell -Command "Start-Process -FilePath '${filePath}' -Verb Print -Wait"`;
       }
 
-      await execAsync(printCommand);
+      console.log(`Executing print command: ${printCommand}`);
+      
+      const result = await execAsync(printCommand);
+      
+      console.log(`Print command executed successfully for ${filename} from ${sourceInfo?.ipAddress || 'unknown'}`);
+      console.log(`Command output:`, result.stdout);
+      if (result.stderr) {
+        console.log(`Command stderr:`, result.stderr);
+      }
+      
+      // Check print queue to verify job was submitted
+      try {
+        const queueCheck = await execAsync('powershell -Command "Get-PrintJob | Select-Object Name, PrinterName, JobStatus | ConvertTo-Json"');
+        console.log(`Current print queue:`, queueCheck.stdout);
+      } catch (queueError) {
+        console.log(`Could not check print queue:`, queueError.message);
+      }
       
       // Update status to completed
       printJob.status = 'completed';
